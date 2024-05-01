@@ -19,3 +19,12 @@
 
 # Go workspace file
 go.work
+
+# files from output
+latest-4.12
+4.12.33
+latest-4.13
+latest-4.14
+latest-4.15
+4.12.40
+4.12.55
