@@ -1,0 +1,10 @@
+baseURL: https://mirror.openshift.com/pub/openshift-v4/x86_64/clients/ocp/
+version:
+  - latest-4.12
+  - 4.12.33
+  - 4.12.40
+  - 4.12.55
+  - latest-4.13
+  - latest-4.14
+  - latest-4.15
+outputDir: /var/tmp/
