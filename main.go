@@ -74,28 +74,32 @@ func main() {
 }
 
 func downloadFileList(fileList []byte, url string, version string) {
+	// given a list of files, download them line by line and validate them with the sha256sum
 	files := strings.Split(string(fileList), "\n")
-	for _, file := range files {
 
+	for _, file := range files {
 		fileInfo := strings.Split(file, " ")
 		if len(fileInfo) < 3 {
 			logrus.Warn("This file is not good?", fileInfo)
 			break
 		}
+		// split the 'fileInfo' line - it will have 3 items, a sha256sum, a space and the filename
 		sha256sum := fileInfo[0]
 		filename := fileInfo[2]
 		fileURL := url + "/" + filename
 
-		logrus.Debugln("Downloading: ", fileURL)
+		// try to download each file 3 times with exponential backoff on error
 		const maxRetries = 3
-		const initialBackoff = 1 * time.Second
+		const initialBackoff = 1 * time.Second << maxRetries
 		var err error
+		logrus.Debugln("Downloading: ", fileURL)
+
 		for i := 0; i < maxRetries; i++ {
 			err = validateFile(version, filename, sha256sum)
 			if err == nil {
 				continue
 			}
-			logrus.Warnf("Failed to validate %s, error: %s", fileURL, err)
+			logrus.Warnf("Could not validate local file %s, error: %s", fileURL, err)
 			time.Sleep(initialBackoff * (1 << uint(i)))
 			err = downloadFile(fileURL, version, filename)
 			if err != nil {
@@ -108,8 +112,6 @@ func downloadFileList(fileList []byte, url string, version string) {
 				continue
 			}
 		}
-		logrus.Errorf("Failed to download %s", fileURL)
-
 	}
 	logrus.Info("Finished processing: ", version)
 }
