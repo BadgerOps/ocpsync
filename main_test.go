@@ -74,3 +74,24 @@ func TestValidateFile(t *testing.T) {
 		t.Errorf("validateFile returned an error: %v", err)
 	}
 }
+func TestContainsAny(t *testing.T) {
+	ignoredFiles := []string{"file1.txt", "file2.txt", "file3.txt"}
+
+	// Test case 1: line contains an ignored file
+	line1 := "This is file1.txt"
+	if !containsAny(line1, ignoredFiles) {
+		t.Errorf("containsAny returned false for line: %s", line1)
+	}
+
+	// Test case 2: line does not contain any ignored file
+	line2 := "This is a test"
+	if containsAny(line2, ignoredFiles) {
+		t.Errorf("containsAny returned true for line: %s", line2)
+	}
+
+	// Test case 3: line contains multiple ignored files
+	line3 := "This is file2.txt and file3.txt"
+	if !containsAny(line3, ignoredFiles) {
+		t.Errorf("containsAny returned false for line: %s", line3)
+	}
+}

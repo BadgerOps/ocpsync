@@ -16,9 +16,15 @@ import (
 )
 
 type Config struct {
-	BaseURL   string   `yaml:"baseURL"`
-	Version   []string `yaml:"version"`
-	OutputDir string   `yaml:"outputDir"`
+	OcpBinaries Section `yaml:"ocpbinaries"`
+	Rhcos       Section `yaml:"rhcos"`
+}
+
+type Section struct {
+	BaseURL      string   `yaml:"baseURL"`
+	Version      []string `yaml:"version"`
+	IgnoredFiles []string `yaml:"ignoredFiles"`
+	OutputDir    string   `yaml:"outputDir"`
 }
 
 func init() {
@@ -41,9 +47,13 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	for _, version := range config.Version {
+	downloadHandler(config)
+}
+
+func downloadHandler(config Config) {
+	for _, version := range config.OcpBinaries.Version {
 		logrus.Info("Processing files for version: ", version)
-		url := config.BaseURL + version
+		url := config.OcpBinaries.BaseURL + version
 		resp, err := http.Get(url)
 		if err != nil {
 			panic(err)
@@ -92,18 +102,17 @@ func downloadFileList(fileList []byte, url string, version string) {
 		const maxRetries = 3
 		const initialBackoff = 1 * time.Second << maxRetries
 		var err error
-		logrus.Debugln("Downloading: ", fileURL)
-
 		for i := 0; i < maxRetries; i++ {
 			err = validateFile(version, filename, sha256sum)
 			if err == nil {
-				continue
+				logrus.Debugf("File validated! %s matches %s", filename, sha256sum)
+				break
 			}
 			logrus.Warnf("Could not validate local file %s, error: %s", fileURL, err)
-			time.Sleep(initialBackoff * (1 << uint(i)))
 			err = downloadFile(fileURL, version, filename)
 			if err != nil {
 				logrus.Warnf("Failed to download %s, error: %s", fileURL, err)
+				time.Sleep(initialBackoff * (1 << uint(i)))
 				continue
 			}
 			err = validateFile(version, filename, sha256sum)
@@ -117,17 +126,27 @@ func downloadFileList(fileList []byte, url string, version string) {
 }
 
 func generateFileList(version string) ([]byte, error) {
+	// bad, I should not re-instantiate here
+	data, err := ioutil.ReadFile("config.yaml")
+	if err != nil {
+		panic(err)
+	}
+	var config Config
+	err = yaml.Unmarshal(data, &config)
+	if err != nil {
+		panic(err)
+	}
+
 	fp := fmt.Sprintf(version + "/sha256sum.txt")
 	raw, err := ioutil.ReadFile(fp)
 	if err != nil {
 		panic(err)
 	}
-
 	lines := strings.Split(string(raw), "\n")
 	filteredLines := []string{}
-
+	ignoredFiles := config.OcpBinaries.IgnoredFiles
 	for _, line := range lines {
-		if !strings.Contains(line, "windows") && !strings.Contains(line, "arm64") && !strings.Contains(line, "aarch64") && !strings.Contains(line, "mac") && !strings.Contains(line, "pp64le") {
+		if !containsAny(line, ignoredFiles) {
 			if line != "" {
 				filteredLines = append(filteredLines, line)
 			}
@@ -138,7 +157,18 @@ func generateFileList(version string) ([]byte, error) {
 	return filteredRaw, nil
 }
 
+func containsAny(line string, ignoredFiles []string) bool {
+	for _, ignoredFile := range ignoredFiles {
+		if strings.Contains(line, ignoredFile) {
+			logrus.Tracef("Ignoring %s as it matches %s", ignoredFile, line)
+			return true
+		}
+	}
+	return false
+}
+
 func downloadFile(url string, filepath string, filename string) error {
+	logrus.Debugln("Downloading: ", url)
 	resp, err := http.Get(url)
 	if err != nil {
 		return err
@@ -167,6 +197,5 @@ func validateFile(filepath, filename string, sha256sum string) error {
 	if hexSum != sha256sum {
 		return fmt.Errorf("file validation failed: expected %s, got %s", sha256sum, hexSum)
 	}
-	logrus.Debugf("File validated! %s matches %s", filename, sha256sum)
 	return nil
 }
