@@ -16,19 +16,21 @@ ocpbinaries:
     - ppc64le
   outputDir: /var/tmp/
 rhcos:
-  baseURL: https://mirror.openshift.com/pub/openshift-v4/x86_64/dependencies/rhcos
+  baseURL: https://mirror.openshift.com/pub/openshift-v4/x86_64/dependencies/rhcos/
   version:
-    - latest-4.12
-    - 4.12.33
-    - 4.12.40
-    - 4.12.55
-    - latest-4.13
-    - latest-4.14
-    - latest-4.15
+    - 4.12/latest
+    - 4.13/latest
+    - 4.14/latest
+    - 4.15/latest
   ignoredFiles:
-    - windows
-    - mac
-    - arm64
-    - aarch64
-    - ppc64le
-  outputDir: /var/tmp
+    - aliyun
+    - aws
+    - azure
+    - azurestack
+    - gcp
+    - ibmcloud
+    - nutanix
+    - openstack
+    - qemu
+    - vmware
+  outputDir: /var/tmp/

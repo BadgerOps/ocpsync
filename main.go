@@ -47,43 +47,30 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	downloadHandler(config)
+	logrus.Info("Running downloads for RHCOS images")
+	downloadHandler(config.Rhcos)
+	logrus.Info("Running downloads for OCP Binaries")
+	downloadHandler(config.OcpBinaries)
 }
 
-func downloadHandler(config Config) {
-	for _, version := range config.OcpBinaries.Version {
+func downloadHandler(config Section) {
+	for _, version := range config.Version {
 		logrus.Info("Processing files for version: ", version)
-		url := config.OcpBinaries.BaseURL + version
-		resp, err := http.Get(url)
+		url := config.BaseURL + version
+		shaURL := url + "/sha256sum.txt"
+		err := downloadFile(shaURL, config.OutputDir, version, "sha256sum.txt")
 		if err != nil {
-			panic(err)
+			logrus.Error("Failed to download file", err)
 		}
-		defer resp.Body.Close()
-
-		body, err := ioutil.ReadAll(resp.Body)
+		fileList, err := generateFileList(version, config.IgnoredFiles)
 		if err != nil {
-			panic(err)
+			logrus.Error(err)
 		}
-
-		paths := strings.Split(string(body), "\n")
-		for _, path := range paths {
-			if strings.Contains(path, version) {
-				shaURL := url + "/sha256sum.txt"
-				err = downloadFile(shaURL, version, "sha256sum.txt")
-				if err != nil {
-					logrus.Error("Failed to download file", err)
-				}
-				fileList, err := generateFileList(version)
-				if err != nil {
-					logrus.Error(err)
-				}
-				downloadFileList(fileList, url, version)
-			}
-		}
+		downloadFileList(fileList, url, version, config.OutputDir)
 	}
 }
 
-func downloadFileList(fileList []byte, url string, version string) {
+func downloadFileList(fileList []byte, url string, version string, outputDir string) {
 	// given a list of files, download them line by line and validate them with the sha256sum
 	files := strings.Split(string(fileList), "\n")
 
@@ -103,19 +90,19 @@ func downloadFileList(fileList []byte, url string, version string) {
 		const initialBackoff = 1 * time.Second << maxRetries
 		var err error
 		for i := 0; i < maxRetries; i++ {
-			err = validateFile(version, filename, sha256sum)
+			err = validateFile(version, filename, sha256sum, outputDir)
 			if err == nil {
 				logrus.Debugf("File validated! %s matches %s", filename, sha256sum)
 				break
 			}
 			logrus.Warnf("Could not validate local file %s, error: %s", fileURL, err)
-			err = downloadFile(fileURL, version, filename)
+			err = downloadFile(fileURL, outputDir, version, filename)
 			if err != nil {
 				logrus.Warnf("Failed to download %s, error: %s", fileURL, err)
 				time.Sleep(initialBackoff * (1 << uint(i)))
 				continue
 			}
-			err = validateFile(version, filename, sha256sum)
+			err = validateFile(version, filename, sha256sum, outputDir)
 			if err != nil {
 				logrus.Error("Failed to download file: ", fileURL)
 				continue
@@ -125,17 +112,9 @@ func downloadFileList(fileList []byte, url string, version string) {
 	logrus.Info("Finished processing: ", version)
 }
 
-func generateFileList(version string) ([]byte, error) {
-	// bad, I should not re-instantiate here
-	data, err := ioutil.ReadFile("config.yaml")
-	if err != nil {
-		panic(err)
-	}
-	var config Config
-	err = yaml.Unmarshal(data, &config)
-	if err != nil {
-		panic(err)
-	}
+type list []string
+
+func generateFileList(version string, ignoredFiles list) ([]byte, error) {
 
 	fp := fmt.Sprintf(version + "/sha256sum.txt")
 	raw, err := ioutil.ReadFile(fp)
@@ -144,7 +123,6 @@ func generateFileList(version string) ([]byte, error) {
 	}
 	lines := strings.Split(string(raw), "\n")
 	filteredLines := []string{}
-	ignoredFiles := config.OcpBinaries.IgnoredFiles
 	for _, line := range lines {
 		if !containsAny(line, ignoredFiles) {
 			if line != "" {
@@ -160,14 +138,14 @@ func generateFileList(version string) ([]byte, error) {
 func containsAny(line string, ignoredFiles []string) bool {
 	for _, ignoredFile := range ignoredFiles {
 		if strings.Contains(line, ignoredFile) {
-			logrus.Tracef("Ignoring %s as it matches %s", ignoredFile, line)
+			logrus.Debugf("Ignoring %s as it matches %s", ignoredFile, line)
 			return true
 		}
 	}
 	return false
 }
 
-func downloadFile(url string, filepath string, filename string) error {
+func downloadFile(url string, outputDir string, filepath string, filename string) error {
 	logrus.Debugln("Downloading: ", url)
 	resp, err := http.Get(url)
 	if err != nil {
@@ -175,9 +153,11 @@ func downloadFile(url string, filepath string, filename string) error {
 	}
 	defer resp.Body.Close()
 
-	os.MkdirAll(filepath, 0755)
+	fullPath := outputDir + filepath
 
-	out, err := os.Create(filepath + "/" + filename)
+	os.MkdirAll(fullPath, 0755)
+
+	out, err := os.Create(fullPath + "/" + filename)
 	if err != nil {
 		return err
 	}
@@ -187,8 +167,9 @@ func downloadFile(url string, filepath string, filename string) error {
 	return err
 }
 
-func validateFile(filepath, filename string, sha256sum string) error {
-	fileData, err := ioutil.ReadFile(filepath + "/" + filename)
+func validateFile(filepath, filename string, sha256sum string, outputDir string) error {
+	fullPath := outputDir + filepath
+	fileData, err := ioutil.ReadFile(fullPath + "/" + filename)
 	if err != nil {
 		return err
 	}
