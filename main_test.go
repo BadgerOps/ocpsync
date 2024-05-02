@@ -64,7 +64,7 @@ func TestValidateFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Define the filepath and expected sha256sum for testing
+	// Define the filepath and expected sha256sum for testing (should always match this!)
 	filepath := tempDir
 	expectedSum := "916f0027a575074ce72a331777c3478d6513f786a591bd892da1a577bf2335f9"
 
