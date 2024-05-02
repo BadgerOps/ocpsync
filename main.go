@@ -66,40 +66,41 @@ func main() {
 				if err != nil {
 					logrus.Error(err)
 				}
-
-				files := strings.Split(string(fileList), "\n")
-				for _, file := range files {
-					// file is a space separated string, the first item is a sha256sum and the third is the filename
-					// split it and create fileURL with the filename, pass the sha256sum to the validation function
-					fileInfo := strings.Split(file, " ")
-					if len(fileInfo) < 3 {
-						logrus.Warn("This file is not good?", fileInfo)
-						break
-					}
-					sha256sum := fileInfo[0]
-					filename := fileInfo[2]
-					fileURL := url + "/" + filename
-					logrus.Debugln("Downloading: ", fileURL)
-					err = validateFile(version, filename, sha256sum)
-					if err != nil {
-						err = downloadFile(fileURL, version, filename)
-						if err != nil {
-							panic(err)
-						}
-						err = validateFile(version, filename, sha256sum)
-						if err != nil {
-							logrus.Error("Failed to download file: ", fileURL)
-							continue
-						}
-
-					}
-
-				}
-				logrus.Info("Finished processing: ", version)
-				break
+				downloadFileList(fileList, url, err, version)
 			}
 		}
 	}
+}
+
+func downloadFileList(fileList []byte, url string, err error, version string) {
+	files := strings.Split(string(fileList), "\n")
+	for _, file := range files {
+
+		fileInfo := strings.Split(file, " ")
+		if len(fileInfo) < 3 {
+			logrus.Warn("This file is not good?", fileInfo)
+			break
+		}
+		sha256sum := fileInfo[0]
+		filename := fileInfo[2]
+		fileURL := url + "/" + filename
+		logrus.Debugln("Downloading: ", fileURL)
+		err = validateFile(version, filename, sha256sum)
+		if err != nil {
+			err = downloadFile(fileURL, version, filename)
+			if err != nil {
+				panic(err)
+			}
+			err = validateFile(version, filename, sha256sum)
+			if err != nil {
+				logrus.Error("Failed to download file: ", fileURL)
+				continue
+			}
+
+		}
+
+	}
+	logrus.Info("Finished processing: ", version)
 }
 
 func generateFileList(version string) ([]byte, error) {
