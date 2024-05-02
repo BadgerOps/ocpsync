@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v2"
@@ -66,13 +67,13 @@ func main() {
 				if err != nil {
 					logrus.Error(err)
 				}
-				downloadFileList(fileList, url, err, version)
+				downloadFileList(fileList, url, version)
 			}
 		}
 	}
 }
 
-func downloadFileList(fileList []byte, url string, err error, version string) {
+func downloadFileList(fileList []byte, url string, version string) {
 	files := strings.Split(string(fileList), "\n")
 	for _, file := range files {
 
@@ -84,20 +85,30 @@ func downloadFileList(fileList []byte, url string, err error, version string) {
 		sha256sum := fileInfo[0]
 		filename := fileInfo[2]
 		fileURL := url + "/" + filename
+
 		logrus.Debugln("Downloading: ", fileURL)
-		err = validateFile(version, filename, sha256sum)
-		if err != nil {
+		const maxRetries = 3
+		const initialBackoff = 1 * time.Second
+		var err error
+		for i := 0; i < maxRetries; i++ {
+			err = validateFile(version, filename, sha256sum)
+			if err == nil {
+				continue
+			}
+			logrus.Warnf("Failed to validate %s, error: %s", fileURL, err)
+			time.Sleep(initialBackoff * (1 << uint(i)))
 			err = downloadFile(fileURL, version, filename)
 			if err != nil {
-				panic(err)
+				logrus.Warnf("Failed to download %s, error: %s", fileURL, err)
+				continue
 			}
 			err = validateFile(version, filename, sha256sum)
 			if err != nil {
 				logrus.Error("Failed to download file: ", fileURL)
 				continue
 			}
-
 		}
+		logrus.Errorf("Failed to download %s", fileURL)
 
 	}
 	logrus.Info("Finished processing: ", version)
