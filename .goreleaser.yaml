@@ -1,6 +1,8 @@
 builds:
-  goos:
-    - freebsd
-    - linux
-  goarch:
-    - amd64
+  - main: .
+    id: "ocpsync-build"
+    goos:
+      - freebsd
+      - linux
+    goarch:
+      - amd64
