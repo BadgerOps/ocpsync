@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"io"
 	"io/ioutil"
 	"os"
 	"strings"
@@ -97,5 +99,45 @@ func TestContainsAny(t *testing.T) {
 	line3 := "This is file2.txt and file3.txt"
 	if !containsAny(line3, ignoredFiles) {
 		t.Errorf("containsAny returned false for line: %s", line3)
+	}
+}
+func TestGenerateFileList(t *testing.T) {
+
+	version := "1.2.3"
+	ignoredFiles := []string{"file1.txt"}
+
+	// Create a temporary directory for testing
+	tempDir, err := ioutil.TempDir("", "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tempDir)
+	filepath := tempDir + "/1.2.3"
+	os.MkdirAll(filepath, 0755)
+	out, err := os.Create(filepath + "/sha256sum.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer out.Close()
+
+	// Write test data to the temporary file
+	testData := []byte("916f0027a575074ce72a331777c3478d6513f786a591bd892da1a577bf2335f9 file1.txt\n" +
+		"1234567890abcdef file2.txt\n" +
+		"abcdef1234567890 file3.txt")
+	_, err = io.Copy(out, bytes.NewReader(testData))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Call the generateFileList function
+	filteredRaw, err := generateFileList(tempDir, version, ignoredFiles)
+	if err != nil {
+		t.Errorf("generateFileList returned an error: %v", err)
+	}
+
+	// Verify the filteredRaw content
+	expectedFilteredRaw := []byte("1234567890abcdef file2.txt\nabcdef1234567890 file3.txt")
+	if !bytes.Equal(filteredRaw, expectedFilteredRaw) {
+		t.Errorf("generateFileList returned incorrect filteredRaw content")
 	}
 }
