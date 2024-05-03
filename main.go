@@ -33,7 +33,7 @@ func init() {
 		TimestampFormat: "2006-01-02 15:04:05",
 	}
 	logrus.SetFormatter(formatter)
-	logrus.SetLevel(logrus.DebugLevel)
+	logrus.SetLevel(logrus.InfoLevel)
 }
 
 func main() {
@@ -57,8 +57,7 @@ func downloadHandler(config Section) {
 	for _, version := range config.Version {
 		logrus.Info("Processing files for version: ", version)
 		url := config.BaseURL + version
-		shaURL := url + "/sha256sum.txt"
-		err := downloadFile(shaURL, config.OutputDir, version, "sha256sum.txt")
+		err := downloadFile(url, config.OutputDir, version, "sha256sum.txt")
 		if err != nil {
 			logrus.Error("Failed to download file", err)
 		}
@@ -83,7 +82,6 @@ func downloadFileList(fileList []byte, url string, version string, outputDir str
 		// split the 'fileInfo' line - it will have 3 items, a sha256sum, a space and the filename
 		sha256sum := fileInfo[0]
 		filename := fileInfo[2]
-		fileURL := url + "/" + filename
 
 		// try to download each file 3 times with exponential backoff on error
 		const maxRetries = 3
@@ -92,20 +90,20 @@ func downloadFileList(fileList []byte, url string, version string, outputDir str
 		for i := 0; i < maxRetries; i++ {
 			err = validateFile(version, filename, sha256sum, outputDir)
 			if err == nil {
-				logrus.Debugf("File validated! %s matches %s", filename, sha256sum)
+				logrus.Infof("File validated! %s matches %s", sha256sum, filename)
 				break
 			}
-			logrus.Warnf("Could not validate local file %s, error: %s", fileURL, err)
-			err = downloadFile(fileURL, outputDir, version, filename)
+			//logrus.Warnf("Could not validate local file %s, error: %s", url, err)
+			err = downloadFile(url, outputDir, version, filename)
 			if err != nil {
-				logrus.Warnf("Failed to download %s, error: %s", fileURL, err)
+				logrus.Warnf("Failed to download %s, error: %s", url, err)
 				time.Sleep(initialBackoff * (1 << uint(i)))
 				continue
 			}
+			logrus.Debugf("Validating file %s at path %s", filename, outputDir)
 			err = validateFile(version, filename, sha256sum, outputDir)
 			if err != nil {
-				logrus.Error("Failed to download file: ", fileURL)
-				continue
+				logrus.Error("Failed to validate file: ", filename)
 			}
 		}
 	}
@@ -146,19 +144,21 @@ func containsAny(line string, ignoredFiles []string) bool {
 }
 
 func downloadFile(url string, outputDir string, filepath string, filename string) error {
-	logrus.Debugln("Downloading: ", url)
-	resp, err := http.Get(url)
+	logrus.Debugf("Downloading file %s to path %s/%s from url %s ", filename, outputDir, filepath, url)
+	fetchUrl := url + "/" + filename
+	resp, err := http.Get(fetchUrl)
 	if err != nil {
 		return err
 	}
 	defer resp.Body.Close()
 
-	fullPath := outputDir + filepath
+	fullPath := outputDir + "/" + filepath
 
 	os.MkdirAll(fullPath, 0755)
 
 	out, err := os.Create(fullPath + "/" + filename)
 	if err != nil {
+		logrus.Error("Could not create filepath ", fullPath)
 		return err
 	}
 	defer out.Close()
@@ -168,8 +168,7 @@ func downloadFile(url string, outputDir string, filepath string, filename string
 }
 
 func validateFile(filepath, filename string, sha256sum string, outputDir string) error {
-	fullPath := outputDir + filepath
-	logrus.Tracef("Validating file %s at path %s", filename, fullPath)
+	fullPath := outputDir + "/" + filepath
 	fileData, err := ioutil.ReadFile(fullPath + "/" + filename)
 	if err != nil {
 		return err
