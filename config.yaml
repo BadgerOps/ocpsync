@@ -14,7 +14,7 @@ ocpbinaries:
     - arm64
     - aarch64
     - ppc64le
-  outputDir: /var/tmp/
+  outputDir: /var/tmp/ocp/
 rhcos:
   baseURL: https://mirror.openshift.com/pub/openshift-v4/x86_64/dependencies/rhcos/
   version:
@@ -33,4 +33,4 @@ rhcos:
     - openstack
     - qemu
     - vmware
-  outputDir: /var/tmp/
+  outputDir: /var/tmp/rhcos
