@@ -1,0 +1,6 @@
+builds:
+  goos:
+    - freebsd
+    - linux
+  goarch:
+    - amd64
