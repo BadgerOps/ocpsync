@@ -62,7 +62,7 @@ func downloadHandler(config Section) {
 		if err != nil {
 			logrus.Error("Failed to download file", err)
 		}
-		fileList, err := generateFileList(version, config.IgnoredFiles)
+		fileList, err := generateFileList(config.OutputDir, version, config.IgnoredFiles)
 		if err != nil {
 			logrus.Error(err)
 		}
@@ -114,12 +114,12 @@ func downloadFileList(fileList []byte, url string, version string, outputDir str
 
 type list []string
 
-func generateFileList(version string, ignoredFiles list) ([]byte, error) {
+func generateFileList(outputDir string, version string, ignoredFiles list) ([]byte, error) {
 
-	fp := fmt.Sprintf(version + "/sha256sum.txt")
+	fp := fmt.Sprintf("%s/%s/sha256sum.txt", outputDir, version)
 	raw, err := ioutil.ReadFile(fp)
 	if err != nil {
-		panic(err)
+		logrus.Error("Could not open file path: ", err)
 	}
 	lines := strings.Split(string(raw), "\n")
 	filteredLines := []string{}
@@ -169,6 +169,7 @@ func downloadFile(url string, outputDir string, filepath string, filename string
 
 func validateFile(filepath, filename string, sha256sum string, outputDir string) error {
 	fullPath := outputDir + filepath
+	logrus.Tracef("Validating file %s at path %s", filename, fullPath)
 	fileData, err := ioutil.ReadFile(fullPath + "/" + filename)
 	if err != nil {
 		return err
