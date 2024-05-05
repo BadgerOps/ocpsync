@@ -15,16 +15,9 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-type Config struct {
-	OcpBinaries Section `yaml:"ocpbinaries"`
-	Rhcos       Section `yaml:"rhcos"`
-}
-
-type Section struct {
-	BaseURL      string   `yaml:"baseURL"`
-	Version      []string `yaml:"version"`
-	IgnoredFiles []string `yaml:"ignoredFiles"`
-	OutputDir    string   `yaml:"outputDir"`
+type fileData struct {
+	sha256sum string
+	filename  string
 }
 
 func init() {
@@ -69,41 +62,29 @@ func downloadHandler(config Section) {
 	}
 }
 
-func downloadFileList(fileList []byte, url string, version string, outputDir string) {
-	// given a list of files, download them line by line and validate them with the sha256sum
-	files := strings.Split(string(fileList), "\n")
-
-	for _, file := range files {
-		fileInfo := strings.Split(file, " ")
-		if len(fileInfo) < 3 {
-			logrus.Warn("This file is not good?", fileInfo)
-			break
-		}
-		// split the 'fileInfo' line - it will have 3 items, a sha256sum, a space and the filename
-		sha256sum := fileInfo[0]
-		filename := fileInfo[2]
-
-		// try to download each file 3 times with exponential backoff on error
-		const maxRetries = 3
-		const initialBackoff = 1 * time.Second << maxRetries
-		var err error
+func downloadFileList(fileList []fileData, url string, version string, outputDir string) {
+	// try to download each file 3 times with exponential backoff on error
+	const maxRetries = 3
+	const initialBackoff = 1 * time.Second << maxRetries
+	var err error
+	for _, line := range fileList {
 		for i := 0; i < maxRetries; i++ {
-			err = validateFile(version, filename, sha256sum, outputDir)
+			err = validateFile(version, line.filename, line.sha256sum, outputDir)
 			if err == nil {
-				logrus.Infof("File validated! %s matches %s", sha256sum, filename)
+				logrus.Infof("File validated! %s matches %s", line.sha256sum, line.filename)
 				break
 			}
 			//logrus.Warnf("Could not validate local file %s, error: %s", url, err)
-			err = downloadFile(url, outputDir, version, filename)
+			err = downloadFile(url, outputDir, version, line.filename)
 			if err != nil {
 				logrus.Warnf("Failed to download %s, error: %s", url, err)
 				time.Sleep(initialBackoff * (1 << uint(i)))
 				continue
 			}
-			logrus.Debugf("Validating file %s at path %s", filename, outputDir)
-			err = validateFile(version, filename, sha256sum, outputDir)
+			logrus.Debugf("Validating file %s at path %s", line.filename, outputDir)
+			err = validateFile(version, line.filename, line.sha256sum, outputDir)
 			if err != nil {
-				logrus.Error("Failed to validate file: ", filename)
+				logrus.Error("Failed to validate file: ", line.filename)
 			}
 		}
 	}
@@ -112,25 +93,29 @@ func downloadFileList(fileList []byte, url string, version string, outputDir str
 
 type list []string
 
-func generateFileList(outputDir string, version string, ignoredFiles list) ([]byte, error) {
-
+func generateFileList(outputDir string, version string, ignoredFiles list) ([]fileData, error) {
+	var file fileData
+	fileSlice := make([]fileData, 0)
 	fp := fmt.Sprintf("%s/%s/sha256sum.txt", outputDir, version)
 	raw, err := ioutil.ReadFile(fp)
 	if err != nil {
 		logrus.Error("Could not open file path: ", err)
 	}
 	lines := strings.Split(string(raw), "\n")
-	filteredLines := []string{}
 	for _, line := range lines {
 		if !containsAny(line, ignoredFiles) {
 			if line != "" {
-				filteredLines = append(filteredLines, line)
+				fileInfo := strings.Split(line, " ")
+				if len(fileInfo) < 3 {
+					logrus.Warn("This file is not good?", fileInfo)
+					break
+				}
+				file.sha256sum, file.filename = fileInfo[0], fileInfo[2]
+				fileSlice = append(fileSlice, file)
 			}
 		}
 	}
-
-	filteredRaw := []byte(strings.Join(filteredLines, "\n"))
-	return filteredRaw, nil
+	return fileSlice, nil
 }
 
 func containsAny(line string, ignoredFiles []string) bool {
