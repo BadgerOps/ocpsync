@@ -154,8 +154,11 @@ func downloadFile(url string, outputDir string, filepath string, filename string
 
 	fullPath := outputDir + "/" + filepath
 
-	os.MkdirAll(fullPath, 0755)
-
+	err = os.MkdirAll(fullPath, 0755)
+	if err != nil {
+		logrus.Error("Could not create filepath ", fullPath)
+		return err
+	}
 	out, err := os.Create(fullPath + "/" + filename)
 	if err != nil {
 		logrus.Error("Could not create filepath ", fullPath)
