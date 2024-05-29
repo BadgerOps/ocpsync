@@ -31,6 +31,5 @@ rhcos:
     - ibmcloud
     - nutanix
     - openstack
-    - qemu
     - vmware
   outputDir: /var/tmp/rhcos
