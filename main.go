@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"strings"
@@ -37,7 +36,7 @@ func init() {
 }
 
 func main() {
-	data, err := ioutil.ReadFile("config.yaml")
+	data, err := os.ReadFile("config.yaml")
 	if err != nil {
 		panic(err)
 	}
@@ -115,9 +114,14 @@ type list []string
 func generateFileList(outputDir string, version string, ignoredFiles list) ([]byte, error) {
 
 	fp := fmt.Sprintf("%s/%s/sha256sum.txt", outputDir, version)
-	raw, err := ioutil.ReadFile(fp)
+	file, err := os.Open(fp)
 	if err != nil {
 		logrus.Error("Could not open file path: ", err)
+	}
+	defer file.Close()
+	raw, err := io.ReadAll(file)
+	if err != nil {
+		logrus.Error("Could not read file: ", err)
 	}
 	lines := strings.Split(string(raw), "\n")
 	filteredLines := []string{}
@@ -172,7 +176,19 @@ func downloadFile(url string, outputDir string, filepath string, filename string
 
 func validateFile(filepath, filename string, sha256sum string, outputDir string) error {
 	fullPath := outputDir + "/" + filepath
-	fileData, err := ioutil.ReadFile(fullPath + "/" + filename)
+	file, err := os.Open(fullPath + "/" + filename)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	fileInfo, err := file.Stat()
+	if err != nil {
+		return err
+	}
+
+	fileData := make([]byte, fileInfo.Size())
+	_, err = file.Read(fileData)
 	if err != nil {
 		return err
 	}
