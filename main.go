@@ -7,11 +7,12 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/sirupsen/logrus"
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 )
 
 type Config struct {
@@ -38,13 +39,13 @@ func init() {
 func main() {
 	data, err := os.ReadFile("config.yaml")
 	if err != nil {
-		panic(err)
+		logrus.Fatal("Failed to read config file: ", err)
 	}
 
 	var config Config
 	err = yaml.Unmarshal(data, &config)
 	if err != nil {
-		panic(err)
+		logrus.Fatal("Failed to parse config file: ", err)
 	}
 	logrus.Info("Running downloads for RHCOS images")
 	downloadHandler(config.Rhcos)
@@ -58,11 +59,13 @@ func downloadHandler(config Section) {
 		url := config.BaseURL + version
 		err := downloadFile(url, config.OutputDir, version, "sha256sum.txt")
 		if err != nil {
-			logrus.Error("Failed to download file", err)
+			logrus.Errorf("Failed to download sha256sum.txt for version %s: %s", version, err)
+			continue
 		}
 		fileList, err := generateFileList(config.OutputDir, version, config.IgnoredFiles)
 		if err != nil {
-			logrus.Error(err)
+			logrus.Errorf("Failed to generate file list for version %s: %s", version, err)
+			continue
 		}
 		downloadFileList(fileList, url, version, config.OutputDir)
 	}
@@ -75,8 +78,8 @@ func downloadFileList(fileList []byte, url string, version string, outputDir str
 	for _, file := range files {
 		fileInfo := strings.Split(file, " ")
 		if len(fileInfo) < 3 {
-			logrus.Warn("This file is not good?", fileInfo)
-			break
+			logrus.Warnf("Skipping malformed line: %v", fileInfo)
+			continue
 		}
 		// split the 'fileInfo' line - it will have 3 items, a sha256sum, a space and the filename
 		sha256sum := fileInfo[0]
@@ -84,7 +87,7 @@ func downloadFileList(fileList []byte, url string, version string, outputDir str
 
 		// try to download each file 3 times with exponential backoff on error
 		const maxRetries = 3
-		const initialBackoff = 1 * time.Second << maxRetries
+		const initialBackoff = 1 * time.Second
 		var err error
 		for i := 0; i < maxRetries; i++ {
 			err = validateFile(version, filename, sha256sum, outputDir)
@@ -92,10 +95,9 @@ func downloadFileList(fileList []byte, url string, version string, outputDir str
 				logrus.Infof("File validated! %s matches %s", sha256sum, filename)
 				break
 			}
-			//logrus.Warnf("Could not validate local file %s, error: %s", url, err)
 			err = downloadFile(url, outputDir, version, filename)
 			if err != nil {
-				logrus.Warnf("Failed to download %s, error: %s", url, err)
+				logrus.Warnf("Failed to download %s/%s, error: %s", url, filename, err)
 				time.Sleep(initialBackoff * (1 << uint(i)))
 				continue
 			}
@@ -109,19 +111,16 @@ func downloadFileList(fileList []byte, url string, version string, outputDir str
 	logrus.Info("Finished processing: ", version)
 }
 
-type list []string
-
-func generateFileList(outputDir string, version string, ignoredFiles list) ([]byte, error) {
-
-	fp := fmt.Sprintf("%s/%s/sha256sum.txt", outputDir, version)
+func generateFileList(outputDir string, version string, ignoredFiles []string) ([]byte, error) {
+	fp := filepath.Join(outputDir, version, "sha256sum.txt")
 	file, err := os.Open(fp)
 	if err != nil {
-		logrus.Error("Could not open file path: ", err)
+		return nil, fmt.Errorf("could not open file path %s: %w", fp, err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	raw, err := io.ReadAll(file)
 	if err != nil {
-		logrus.Error("Could not read file: ", err)
+		return nil, fmt.Errorf("could not read file %s: %w", fp, err)
 	}
 	lines := strings.Split(string(raw), "\n")
 	filteredLines := []string{}
@@ -147,53 +146,52 @@ func containsAny(line string, ignoredFiles []string) bool {
 	return false
 }
 
-func downloadFile(url string, outputDir string, filepath string, filename string) error {
-	logrus.Debugf("Downloading file %s to path %s/%s from url %s ", filename, outputDir, filepath, url)
-	fetchUrl := url + "/" + filename
-	resp, err := http.Get(fetchUrl)
+func downloadFile(url string, outputDir string, version string, filename string) error {
+	logrus.Debugf("Downloading file %s to path %s/%s from url %s ", filename, outputDir, version, url)
+	fetchURL := url + "/" + filename
+	resp, err := http.Get(fetchURL)
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
-	fullPath := outputDir + "/" + filepath
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("unexpected status code %d for %s", resp.StatusCode, fetchURL)
+	}
+
+	fullPath := filepath.Join(outputDir, version)
 
 	err = os.MkdirAll(fullPath, 0755)
 	if err != nil {
-		logrus.Error("Could not create filepath ", fullPath)
-		return err
+		return fmt.Errorf("could not create directory %s: %w", fullPath, err)
 	}
-	out, err := os.Create(fullPath + "/" + filename)
+	out, err := os.Create(filepath.Join(fullPath, filename))
 	if err != nil {
-		logrus.Error("Could not create filepath ", fullPath)
-		return err
+		return fmt.Errorf("could not create file %s: %w", filepath.Join(fullPath, filename), err)
 	}
-	defer out.Close()
 
-	_, err = io.Copy(out, resp.Body)
-	return err
+	_, copyErr := io.Copy(out, resp.Body)
+	closeErr := out.Close()
+	if copyErr != nil {
+		return copyErr
+	}
+	return closeErr
 }
 
-func validateFile(filepath, filename string, sha256sum string, outputDir string) error {
-	fullPath := outputDir + "/" + filepath
-	file, err := os.Open(fullPath + "/" + filename)
+func validateFile(version, filename string, sha256sum string, outputDir string) error {
+	fullPath := filepath.Join(outputDir, version, filename)
+	file, err := os.Open(fullPath)
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
-	fileInfo, err := file.Stat()
+	hasher := sha256.New()
+	_, err = io.Copy(hasher, file)
 	if err != nil {
 		return err
 	}
-
-	fileData := make([]byte, fileInfo.Size())
-	_, err = file.Read(fileData)
-	if err != nil {
-		return err
-	}
-	computedSum := sha256.Sum256(fileData)
-	hexSum := hex.EncodeToString(computedSum[:])
+	hexSum := hex.EncodeToString(hasher.Sum(nil))
 	if hexSum != sha256sum {
 		return fmt.Errorf("file validation failed: expected %s, got %s", sha256sum, hexSum)
 	}
