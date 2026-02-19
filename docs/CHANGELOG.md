@@ -27,7 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Replace panic() with logrus.Fatal() for config errors
 
 ### Changed
-- Upgrade Go from 1.22 to 1.23
+- Upgrade Go from 1.22 to 1.24 (fixes crypto/tls and crypto/x509 vulnerabilities)
 - Upgrade gopkg.in/yaml from v2 to v3
 - Upgrade golang.org/x/sys to v0.28.0
 - Use filepath.Join() instead of string concatenation for paths
