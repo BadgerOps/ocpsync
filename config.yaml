@@ -1,13 +1,9 @@
 ocpbinaries:
   baseURL: https://mirror.openshift.com/pub/openshift-v4/x86_64/clients/ocp/
   version:
-    - latest-4.12
-    - 4.12.33
-    - 4.12.40
-    - 4.12.55
-    - latest-4.13
-    - latest-4.14
-    - latest-4.15
+    - latest-4.17
+    - latest-4.18
+    - latest-4.19
   ignoredFiles:
     - windows
     - mac
@@ -18,10 +14,9 @@ ocpbinaries:
 rhcos:
   baseURL: https://mirror.openshift.com/pub/openshift-v4/x86_64/dependencies/rhcos/
   version:
-    - 4.12/latest
-    - 4.13/latest
-    - 4.14/latest
-    - 4.15/latest
+    - 4.17/latest
+    - 4.18/latest
+    - 4.19/latest
   ignoredFiles:
     - aliyun
     - aws
