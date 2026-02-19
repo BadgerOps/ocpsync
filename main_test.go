@@ -16,7 +16,7 @@ func TestDownloadFile(t *testing.T) {
 	// Set up a test HTTP server
 	expectedContent := "hello from test server"
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, expectedContent)
+		_, _ = fmt.Fprint(w, expectedContent)
 	}))
 	defer ts.Close()
 
@@ -161,7 +161,7 @@ func TestGenerateFileListMissingFile(t *testing.T) {
 func TestDownloadFileCreatesDirectory(t *testing.T) {
 	expectedContent := "directory test"
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, expectedContent)
+		_, _ = fmt.Fprint(w, expectedContent)
 	}))
 	defer ts.Close()
 

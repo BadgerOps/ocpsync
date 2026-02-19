@@ -117,7 +117,7 @@ func generateFileList(outputDir string, version string, ignoredFiles []string) (
 	if err != nil {
 		return nil, fmt.Errorf("could not open file path %s: %w", fp, err)
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 	raw, err := io.ReadAll(file)
 	if err != nil {
 		return nil, fmt.Errorf("could not read file %s: %w", fp, err)
@@ -153,7 +153,7 @@ func downloadFile(url string, outputDir string, version string, filename string)
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("unexpected status code %d for %s", resp.StatusCode, fetchURL)
@@ -169,10 +169,13 @@ func downloadFile(url string, outputDir string, version string, filename string)
 	if err != nil {
 		return fmt.Errorf("could not create file %s: %w", filepath.Join(fullPath, filename), err)
 	}
-	defer out.Close()
 
-	_, err = io.Copy(out, resp.Body)
-	return err
+	_, copyErr := io.Copy(out, resp.Body)
+	closeErr := out.Close()
+	if copyErr != nil {
+		return copyErr
+	}
+	return closeErr
 }
 
 func validateFile(version, filename string, sha256sum string, outputDir string) error {
@@ -181,7 +184,7 @@ func validateFile(version, filename string, sha256sum string, outputDir string) 
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	hasher := sha256.New()
 	_, err = io.Copy(hasher, file)
