@@ -25,3 +25,4 @@ ocpsync
 
 # files from output
 sha256sum.txt
+.clawpatch/
